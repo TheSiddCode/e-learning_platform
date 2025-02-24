@@ -1,53 +1,77 @@
-import {User } from "../models/User.js";
+import { User } from "../models/User.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import sendMail from "../middlewares/sendMail.js";
+import TryCatch from "../middlewares/TryCatch.js";
 
+// ✅ Register User with OTP Verification
+export const register = TryCatch(async (req, res) => {
+  const { email, name, password } = req.body;
 
+  let user = await User.findOne({ email });
+  if (user)
+    return res.status(400).json({ message: "User Already Exists" });
 
-export const register = async(req,res) => {
-  try{
-  const {email,name,password}= req.body
+  const hashPassword = await bcrypt.hash(password, 10);
+  const newUser = new User({ name, email, password: hashPassword });
 
-  let user = await User.findOne({email});
+  // Generate 4-digit OTP
+  const otp = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
 
-  if(user)
-    return res.status(400).json
-({
-  message: "User Already Exists",
+  // Generate Activation Token
+  const activationToken = jwt.sign(
+    { user: { name: newUser.name, email: newUser.email, password: newUser.password }, otp },
+    process.env.Activation_Secret,
+    { expiresIn: "5m" }
+  );
+
+  // Send OTP via email
+  await sendMail(email, "E-learning", { name, otp });
+
+  res.status(200).json({ message: "OTP sent to your email", activationToken });
 });
 
-const hashPassword = await bcrypt.hash(password,10);
-user ={
-  name,
-  email,
-  password: hashPassword,
-};
-const otp = Math.floor(Math.random()*10000);
-const activationToken = jwt.sign({
-  user,
-  otp,
-},process.env.Activation_Secret,{
-  expireIn: "5m",
+// ✅ Verify OTP and Register User
+export const verifyUser = TryCatch(async (req, res) => {
+  const { otp, activationToken } = req.body;
+
+  const verify = jwt.verify(activationToken, process.env.Activation_Secret);
+  if (!verify)
+    return res.status(400).json({ message: "OTP Expired" });
+
+  if (verify.otp !== otp)
+    return res.status(400).json({ message: "Wrong OTP" });
+
+  await User.create({
+    name: verify.user.name,
+    email: verify.user.email,
+    password: verify.user.password,
+  });
+
+  res.json({ message: "User Registered" });
 });
 
-const data = {
-  name, 
-  otp,
-};
+// ✅ User Login
+export const loginUser = TryCatch(async (req, res) => {
+  const { email, password } = req.body;
+  const user = await User.findOne({ email });
 
-await sendMail(
-  email,
-  "E learning",
-  data
-)
-res.status(200).json({
-  message: "Otp send to your mail",
-  activationToken,
+  if (!user)
+    return res.status(400).json({ message: "No User with this email" });
+
+  const matchPassword = await bcrypt.compare(password, user.password);
+  if (!matchPassword)
+    return res.status(401).json({ message: "Wrong Password" });
+
+  const token = jwt.sign({ _id: user._id }, process.env.Jwt_Sec, { expiresIn: "15d" });
+
+  res.json({ message: `Welcome Back ${user.name}`, token, user });
 });
-}catch(error){
-    res.status(500).json({
-      message: error.message,
-    });
-  }
-}
+
+// ✅ Get User Profile (Requires Auth Middleware)
+export const myProfile = TryCatch(async (req, res) => {
+  const user = await User.findById(req.user._id);
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  res.json({ user });
+});
