@@ -9,8 +9,7 @@ export const register = TryCatch(async (req, res) => {
   const { email, name, password } = req.body;
 
   let user = await User.findOne({ email });
-  if (user)
-    return res.status(400).json({ message: "User Already Exists" });
+  if (user) return res.status(400).json({ message: "User Already Exists" });
 
   const hashPassword = await bcrypt.hash(password, 10);
   const newUser = new User({ name, email, password: hashPassword });
@@ -36,11 +35,9 @@ export const verifyUser = TryCatch(async (req, res) => {
   const { otp, activationToken } = req.body;
 
   const verify = jwt.verify(activationToken, process.env.Activation_Secret);
-  if (!verify)
-    return res.status(400).json({ message: "OTP Expired" });
+  if (!verify) return res.status(400).json({ message: "OTP Expired" });
 
-  if (verify.otp !== otp)
-    return res.status(400).json({ message: "Wrong OTP" });
+  if (verify.otp !== otp) return res.status(400).json({ message: "Wrong OTP" });
 
   await User.create({
     name: verify.user.name,
@@ -56,12 +53,10 @@ export const loginUser = TryCatch(async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
 
-  if (!user)
-    return res.status(400).json({ message: "No User with this email" });
+  if (!user) return res.status(400).json({ message: "No User with this email" });
 
   const matchPassword = await bcrypt.compare(password, user.password);
-  if (!matchPassword)
-    return res.status(401).json({ message: "Wrong Password" });
+  if (!matchPassword) return res.status(401).json({ message: "Wrong Password" });
 
   const token = jwt.sign({ _id: user._id }, process.env.Jwt_Sec, { expiresIn: "15d" });
 
